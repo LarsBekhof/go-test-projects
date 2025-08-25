@@ -4,30 +4,28 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
 	"github.com/gorilla/websocket"
 )
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
-	HandshakeTimeout: 0,
-	ReadBufferSize: 0,
-	WriteBufferSize: 0,
-	WriteBufferPool: nil,
-	Subprotocols: []string{},
-	Error: func(w http.ResponseWriter, r *http.Request, status int, reason error) {
-		panic("TODO")
-	},
-	EnableCompression: false,
+}
+
+var wsPool []*websocket.Conn
+
+func onErr(err any) {
+	fmt.Println(err)
 }
 
 func main() {
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/static/", handleAssets)
-	http.HandleFunc("/ws/", handleWs)
+	http.HandleFunc("/ws", handleWs)
 
 	port := ":9000"
 
-	fmt.Println("Server is running on port " + port)
+	fmt.Println("Server is running on http://localhost" + port)
 
 	log.Fatal(http.ListenAndServe(port, nil))
 }
@@ -42,9 +40,10 @@ func handleAssets(w http.ResponseWriter, r *http.Request) {
 
 func handleWs(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
+	wsPool = append(wsPool, ws)
 
 	if err != nil {
-		panic("Something went wrong")
+		onErr(err)
 	}
 	defer ws.Close()
 
@@ -52,11 +51,14 @@ func handleWs(w http.ResponseWriter, r *http.Request) {
 		_, msg, err := ws.ReadMessage()
 
 		if err != nil {
-			panic("Something went wrong")
+			onErr(err)
+			continue
 		}
 
-		if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
-			panic("Something went wrong")
+		for _, nWs := range wsPool {
+			if err := nWs.WriteMessage(websocket.TextMessage, msg); err != nil {
+				onErr(err)
+			}
 		}
 	}
 }
